@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flagged Commands - Keylogger Remote Monitoring</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        .flag-item { margin-bottom: 15px; }
+        .severity-badge {
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        .severity-critical { background-color: #dc3545; color: white; }
+        .severity-high { background-color: #fd7e14; color: white; }
+        .severity-medium { background-color: #ffc107; color: black; }
+        .severity-low { background-color: #28a745; color: white; }
+        .command-text { 
+            font-family: monospace;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .description-text {
+            font-style: italic;
+            color: #666;
+        }
+        .filter-controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        .severity-stats {
+            margin-bottom: 20px;
+        }
+        .severity-stat {
+            display: inline-block;
+            margin-right: 20px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">Keylogger Monitor</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item"><a class="nav-link" href="/">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/devices">Devices</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/logs">Logs</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="/flags">Flags</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/screenshots">Screenshots</a></li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    <div class="container mt-4">
+        <h1>Flagged Commands</h1>
+        
+        <div class="filter-controls">
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="severityFilter">Filter by Severity:</label>
+                    <select class="form-select" id="severityFilter">
+                        <option value="all">All Severities</option>
+                        <option value="CRITICAL">Critical</option>
+                        <option value="HIGH">High</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="LOW">Low</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label for="deviceFilter">Filter by Device:</label>
+                    <select class="form-select" id="deviceFilter">
+                        <option value="all">All Devices</option>
+                        {% set device_ids = [] %}
+                        {% for flag in flags %}
+                            {% if flag.device_id not in device_ids %}
+                                <option value="{{ flag.device_id }}">{{ flag.device_id[:8] }}...</option>
+                                {% set _ = device_ids.append(flag.device_id) %}
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <div class="severity-stats">
+            <h5>Severity Statistics:</h5>
+            <div class="severity-stat severity-critical">
+                Critical: <span id="criticalCount">0</span>
+            </div>
+            <div class="severity-stat severity-high">
+                High: <span id="highCount">0</span>
+            </div>
+            <div class="severity-stat severity-medium">
+                Medium: <span id="mediumCount">0</span>
+            </div>
+            <div class="severity-stat severity-low">
+                Low: <span id="lowCount">0</span>
+            </div>
+        </div>
+        
+        {% if flags %}
+            <div class="list-group mt-4">
+                {% for flag in flags %}
+                    <div class="list-group-item flag-item" data-severity="{{ flag.data.severity if flag.data and flag.data.severity else 'UNKNOWN' }}" data-device="{{ flag.device_id }}">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">
+                                {% if flag.data and flag.data.severity %}
+                                    <span class="severity-badge severity-{{ flag.data.severity.lower() }}">
+                                        {{ flag.data.severity }}
+                                    </span>
+                                {% endif %}
+                                {{ flag.data.command if flag.data and flag.data.command else 'Unknown Command' }}
+                            </h5>
+                            <small>{{ flag.timestamp }}</small>
+                        </div>
+                        <p class="mb-1">Device: {{ flag.device_id }}</p>
+                        <p class="mb-1">Window: {{ flag.data.window_title if flag.data and flag.data.window_title else 'Unknown' }}</p>
+                        {% if flag.data and flag.data.description %}
+                            <p class="description-text">{{ flag.data.description }}</p>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-info">No flagged commands yet.</div>
+        {% endif %}
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Update severity counts
+        function updateSeverityCounts() {
+            const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+            document.querySelectorAll('.flag-item').forEach(item => {
+                if (item.style.display !== 'none') {
+                    const severity = item.dataset.severity;
+                    if (severity in counts) {
+                        counts[severity]++;
+                    }
+                }
+            });
+            
+            document.getElementById('criticalCount').textContent = counts.CRITICAL;
+            document.getElementById('highCount').textContent = counts.HIGH;
+            document.getElementById('mediumCount').textContent = counts.MEDIUM;
+            document.getElementById('lowCount').textContent = counts.LOW;
+        }
+        
+        // Filter functionality
+        document.getElementById('severityFilter').addEventListener('change', function() {
+            const selectedSeverity = this.value;
+            const selectedDevice = document.getElementById('deviceFilter').value;
+            
+            document.querySelectorAll('.flag-item').forEach(item => {
+                const showSeverity = selectedSeverity === 'all' || item.dataset.severity === selectedSeverity;
+                const showDevice = selectedDevice === 'all' || item.dataset.device === selectedDevice;
+                item.style.display = showSeverity && showDevice ? 'block' : 'none';
+            });
+            
+            updateSeverityCounts();
+        });
+        
+        document.getElementById('deviceFilter').addEventListener('change', function() {
+            const selectedDevice = this.value;
+            const selectedSeverity = document.getElementById('severityFilter').value;
+            
+            document.querySelectorAll('.flag-item').forEach(item => {
+                const showDevice = selectedDevice === 'all' || item.dataset.device === selectedDevice;
+                const showSeverity = selectedSeverity === 'all' || item.dataset.severity === selectedSeverity;
+                item.style.display = showDevice && showSeverity ? 'block' : 'none';
+            });
+            
+            updateSeverityCounts();
+        });
+        
+        // Initial count update
+        updateSeverityCounts();
+        
+        // Connect to Socket.IO for real-time updates
+        const socket = io();
+        socket.on('data_update', function(data) {
+            if (data.type === 'flag') {
+                window.location.reload();
+            }
+        });
+    </script>
+</body>
+</html>
